@@ -1,66 +1,76 @@
 #!/bin/bash
 
+# Date format
+date="$(date '+%Y%m%d')"
+
+# Path
+mysqldumpPath="$(which mysqldump)"
+findPath="$(which find)"
+tarPath="$(which tar)"
+rsyncPath="$(which rsync)"
+
 # Read config.cfg file within the private directory
-source /private/config.cfg
+source private/config.cfg
+
+# Make sure only root can run our script
+if [ "$(id -u)" != "0" ]; then
+   echo "This script must be run as root" 1>&2
+   exit 1
+fi
 
 # Backup time
-echo "Backup Started: $(date)"
+echo "$(date +"%Y%m%d%H%M%S") START"
 
 # Create the backup dirs if they don't exist
-if [[ ! -d $BACKUP_DIR ]]
+if [[ ! -d $backupDir ]]
   then
-  mkdir -p "$BACKUP_DIR"
+  echo "$(date +"%Y%m%d%H%M%S") Creation folder $backupDir"
+  mkdir -p "$backupDir"
 fi
 
 # Backup MYSQL
-if [ "$DUMP_MYSQL" = "true" ]
+if [ "$mysqlDump" = "true" ]
 then
-      echo "Dumping: $MYSQL_DATABASE..."
-      $MYSQLDUMP_PATH --opt --skip-add-locks -h $MYSQL_HOST -u$MYSQL_USER -p$MYSQL_PASS $MYSQL_DATABASE | gzip > $BACKUP_DIR\_$DATE-mysql.sql.gz
+      echo "$(date +"%Y%m%d%H%M%S") MYSQL - Backup Mysql database: $mysqlDatabase"
+      $mysqldumpPath --opt --skip-add-locks -h $mysqlHost -u$mysqlUser -p$mysqlPass $mysqlDatabase | gzip > $backupDir$date-mysql.sql.gz
 
       # Delete old mysql backups
-      echo "------------------------------------"
-      echo "Deleting old mysql backups..."
+      echo "$(date +"%Y%m%d%H%M%S") MYSQL - Deleting old mysql backups..."
 
       # List dumps to be deleted to stdout (for report)
-      $FIND_PATH $BACKUP_DIR*.-mysql.sql.gz -mtime +$KEEP_BACKUP
+      $findPath $backupDir*-mysql.sql.gz -mtime +$keepBackup
 
       # Delete dumps older than specified number of days
-      $FIND_PATH $BACKUP_DIR*.-mysql.sql.gz -mtime +$KEEP_BACKUP -exec rm {} +
+      $findPath $backupDir*-mysql.sql.gz -mtime +$keepBackup -exec rm {} +
 
 fi
 
 
-if [ "$TAR_SITES" == "true" ]
-  then
+if [ "$repositoryDump" == "true" ]
+then
 
   # Backup sites dir
-  echo "------------------------------------"
-  echo "Backup sites dir $SITES_DIR"
-  $TAR_PATH -czf $BACKUP_DIR/_$DATE-sites.tgz $SITES_DIR
+  echo "$(date +"%Y%m%d%H%M%S") REPO  - Backup repository: $repositoryLocation"
+  $tarPath -czPf $backupDir$date-repository.tgz $repositoryLocation
 
   # Delete old sites backups
-  echo "------------------------------------"
-  echo "Deleting old sites backups..."
+  echo "$(date +"%Y%m%d%H%M%S") REPO  - Deleting old repository backups..."
 
   # List files to be deleted to stdout (for report)
-  $FIND_PATH $BACKUP_DIR*.-sites.tgz -mtime +$KEEP_BACKUP
+  $findPath $backupDir*-repository.tgz -mtime +$keepBackup
 
   # Delete files older than specified number of days
-  $FIND_PATH $BACKUP_DIR*.-sites.tgz -mtime +$KEEP_BACKUP -exec rm {} +
+  $findPath $backupDir*-repository.tgz -mtime +$keepBackup -exec rm {} +
 
 fi
-
 
 
 # Rsync everything with another server
-if [[ "$SYNC" == "rsync" ]]
-  then
-  echo "------------------------------------"
-  echo "Sending backups to backup server..."
-  $RSYNC_PATH --del -vaze "ssh -p $RSYNC_PORT" $BACKUP_DIR/ $RSYNC_USER@$RSYNC_SERVER:$RSYNC_DIR
+if [[ "$rsync" == "true" ]]
+then
+  echo "$(date +"%Y%m%d%H%M%S") RSYNC - Sending backups to backup server..."
+  $rsyncPath --del -aze "ssh -p $rsyncPort" $backupDir/ $rsyncUser@$rsyncServer:$rsyncDir
 fi
 
 # Announce the completion time
-echo "------------------------------------"
-echo "Backup Completed: $(date)"
+echo "$(date +"%Y%m%d%H%M%S") FINISH"
